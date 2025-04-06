@@ -46,9 +46,9 @@ class AppUpdateChecker {
 
 val GITHUB_REPO: String by lazy {
     if (BuildConfig.PREVIEW) {
-        "aniyomiorg/aniyomi-preview"
+        "joelschmol/femiyomi"
     } else {
-        "aniyomiorg/aniyomi"
+        "joelschmol/femiyomi"
     }
 }
 
