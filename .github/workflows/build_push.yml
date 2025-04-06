@@ -37,7 +37,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4.1.0
 
       - name: Build app and run unit tests
-        run: ./gradlew spotlessCheck assembleStandardRelease testReleaseUnitTest testStandardReleaseUnitTest assembleStandardPreview
+        run: ./gradlew spotlessApply spotlessCheck assembleStandardRelease testReleaseUnitTest testStandardReleaseUnitTest assembleStandardPreview
 
       - name: Upload APK
         uses: actions/upload-artifact@v4.4.3
