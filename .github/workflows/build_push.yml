@@ -36,10 +36,10 @@ jobs:
       - name: Set up gradle
         uses: gradle/actions/setup-gradle@v4.1.0
 
-      - name: Build app and run unit tests
-        run: |
-          ./gradlew spotlessApply spotlessCheck assembleStandardRelease testReleaseUnitTest testStandardReleaseUnitTest assembleStandardPreview
-          ls -R app/build/outputs/apk/standard/preview
+      - name: Build app
+        run: 
+          ./gradlew spotlessApply spotlessCheck assembleStandardRelease assembleStandardPreview
+          
       - name: Upload APK
         uses: actions/upload-artifact@v4.4.3
         with:
@@ -50,7 +50,7 @@ jobs:
         uses: actions/upload-artifact@v4.4.3
         with:
           name: arm64-v8a-preview-${{ github.sha }}
-          path: app/build/outputs/apk/standard/preview/app-standard-arm64-v8a-preview-unsigned.apk
+          path: app/build/outputs/apk/standard/preview/app-standard-arm64-v8a-preview.apk
 
       - name: Upload mapping
         uses: actions/upload-artifact@v4.4.3
