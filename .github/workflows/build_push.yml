@@ -38,7 +38,7 @@ jobs:
 
       - name: Build app and run unit tests
         run: ./gradlew spotlessApply spotlessCheck assembleStandardRelease testReleaseUnitTest testStandardReleaseUnitTest assembleStandardPreview
-
+              ls app/build/outputs/apk/standard/preview
       - name: Upload APK
         uses: actions/upload-artifact@v4.4.3
         with:
