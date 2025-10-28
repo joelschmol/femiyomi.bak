@@ -2,6 +2,8 @@ package eu.kanade.tachiyomi.data.library.anime
 
 import android.content.Context
 import android.content.pm.ServiceInfo
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Build
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
@@ -20,7 +22,9 @@ import eu.kanade.domain.entries.anime.interactor.UpdateAnime
 import eu.kanade.domain.entries.anime.model.toSAnime
 import eu.kanade.domain.items.episode.interactor.SyncEpisodesWithSource
 import eu.kanade.tachiyomi.animesource.model.AnimeUpdateStrategy
+import eu.kanade.tachiyomi.animesource.model.FetchType
 import eu.kanade.tachiyomi.animesource.model.SAnime
+import eu.kanade.tachiyomi.data.cache.AnimeBackgroundCache
 import eu.kanade.tachiyomi.data.cache.AnimeCoverCache
 import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadManager
 import eu.kanade.tachiyomi.data.notification.Notifications
@@ -49,6 +53,7 @@ import tachiyomi.domain.entries.anime.interactor.GetLibraryAnime
 import tachiyomi.domain.entries.anime.model.Anime
 import tachiyomi.domain.items.episode.model.Episode
 import tachiyomi.domain.items.episode.model.NoEpisodesException
+import tachiyomi.domain.items.season.interactor.GetAnimeSeasonsByParentId
 import tachiyomi.domain.library.anime.LibraryAnime
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.library.service.LibraryPreferences.Companion.DEVICE_CHARGING
@@ -61,6 +66,7 @@ import tachiyomi.domain.library.service.LibraryPreferences.Companion.ENTRY_OUTSI
 import tachiyomi.domain.source.anime.model.AnimeSourceNotInstalledException
 import tachiyomi.domain.source.anime.service.AnimeSourceManager
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.aniyomi.AYMR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
@@ -78,12 +84,14 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
     private val libraryPreferences: LibraryPreferences = Injekt.get()
     private val downloadManager: AnimeDownloadManager = Injekt.get()
     private val coverCache: AnimeCoverCache = Injekt.get()
+    private val backgroundCache: AnimeBackgroundCache = Injekt.get()
     private val getLibraryAnime: GetLibraryAnime = Injekt.get()
     private val getAnime: GetAnime = Injekt.get()
     private val updateAnime: UpdateAnime = Injekt.get()
     private val syncEpisodesWithSource: SyncEpisodesWithSource = Injekt.get()
     private val animeFetchInterval: AnimeFetchInterval = Injekt.get()
     private val filterEpisodesForDownload: FilterEpisodesForDownload = Injekt.get()
+    private val getAnimeSeasonsByParentId: GetAnimeSeasonsByParentId = Injekt.get()
 
     private val notifier = AnimeLibraryUpdateNotifier(context)
 
@@ -91,15 +99,12 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
 
     override suspend fun doWork(): Result {
         if (tags.contains(WORK_NAME_AUTO)) {
-            val preferences = Injekt.get<LibraryPreferences>()
-            val restrictions = preferences.autoUpdateDeviceRestrictions().get()
-            if ((DEVICE_ONLY_ON_WIFI in restrictions) && !context.isConnectedToWifi()) {
-                return Result.failure()
-            }
-
-            // Find a running manual worker. If exists, try again later
-            if (context.workManager.isRunning(WORK_NAME_MANUAL)) {
-                return Result.retry()
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+                val preferences = Injekt.get<LibraryPreferences>()
+                val restrictions = preferences.autoUpdateDeviceRestrictions().get()
+                if ((DEVICE_ONLY_ON_WIFI in restrictions) && !context.isConnectedToWifi()) {
+                    return Result.retry()
+                }
             }
         }
 
@@ -176,11 +181,30 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
                 .distinctBy { it.anime.id }
         }
 
+        val includeSeasons = libraryPreferences.updateSeasonOnLibraryUpdate().get()
+        val lastToUpdateWithSeasons = listToUpdate.flatMap { libAnime ->
+            when (libAnime.anime.fetchType) {
+                FetchType.Seasons -> {
+                    if (includeSeasons) {
+                        val seasons = getAnimeSeasonsByParentId.await(libAnime.anime.id)
+                        seasons
+                            .filter { s ->
+                                s.anime.fetchType == FetchType.Episodes && !s.anime.favorite
+                            }
+                            .map { it.toLibraryAnime() }
+                    } else {
+                        emptyList()
+                    }
+                }
+                FetchType.Episodes -> listOf(libAnime)
+            }
+        }
+
         val restrictions = libraryPreferences.autoUpdateItemRestrictions().get()
         val skippedUpdates = mutableListOf<Pair<Anime, String?>>()
         val (_, fetchWindowUpperBound) = animeFetchInterval.getWindow(ZonedDateTime.now())
 
-        animeToUpdate = listToUpdate
+        animeToUpdate = lastToUpdateWithSeasons
             .filter {
                 when {
                     it.anime.updateStrategy != AnimeUpdateStrategy.ALWAYS_UPDATE -> {
@@ -204,7 +228,7 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
                         false
                     }
 
-                    ENTRY_NON_VIEWED in restrictions && it.totalEpisodes > 0L && !it.hasStarted -> {
+                    ENTRY_NON_VIEWED in restrictions && it.totalCount > 0L && !it.hasStarted -> {
                         skippedUpdates.add(
                             it.anime to context.stringResource(MR.strings.skipped_reason_not_started),
                         )
@@ -262,7 +286,7 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
                                 ensureActive()
 
                                 // Don't continue to update if anime is not in library
-                                if (getAnime.await(anime.id)?.favorite != true) {
+                                if (anime.parentId == null && getAnime.await(anime.id)?.favorite != true) {
                                     return@forEach
                                 }
 
@@ -291,7 +315,7 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
                                     } catch (e: Throwable) {
                                         val errorMessage = when (e) {
                                             is NoEpisodesException -> context.stringResource(
-                                                MR.strings.no_episodes_error,
+                                                AYMR.strings.no_episodes_error,
                                             )
                                             // failedUpdates will already have the source, don't need to copy it into the message
                                             is AnimeSourceNotInstalledException -> context.stringResource(
@@ -345,14 +369,14 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
         // Update anime metadata if needed
         if (libraryPreferences.autoUpdateMetadata().get()) {
             val networkAnime = source.getAnimeDetails(anime.toSAnime())
-            updateAnime.awaitUpdateFromSource(anime, networkAnime, manualFetch = false, coverCache)
+            updateAnime.awaitUpdateFromSource(anime, networkAnime, manualFetch = false, coverCache, backgroundCache)
         }
 
         val episodes = source.getEpisodeList(anime.toSAnime())
 
         // Get anime from database to account for if it was removed during the update and
         // to get latest data so it doesn't get overwritten later on
-        val dbAnime = getAnime.await(anime.id)?.takeIf { it.favorite } ?: return emptyList()
+        val dbAnime = getAnime.await(anime.id)?.takeIf { it.parentId != null || it.favorite } ?: return emptyList()
 
         return syncEpisodesWithSource.await(episodes, dbAnime, source, false, fetchWindow)
     }
@@ -443,15 +467,24 @@ class AnimeLibraryUpdateJob(private val context: Context, workerParams: WorkerPa
             val interval = prefInterval ?: preferences.autoUpdateInterval().get()
             if (interval > 0) {
                 val restrictions = preferences.autoUpdateDeviceRestrictions().get()
-                val constraints = Constraints(
-                    requiredNetworkType = if (DEVICE_NETWORK_NOT_METERED in restrictions) {
-                        NetworkType.UNMETERED
-                    } else {
-                        NetworkType.CONNECTED
-                    },
-                    requiresCharging = DEVICE_CHARGING in restrictions,
-                    requiresBatteryNotLow = true,
-                )
+                val networkType = if (DEVICE_NETWORK_NOT_METERED in restrictions) {
+                    NetworkType.UNMETERED
+                } else {
+                    NetworkType.CONNECTED
+                }
+                val networkRequestBuilder = NetworkRequest.Builder()
+                if (DEVICE_ONLY_ON_WIFI in restrictions) {
+                    networkRequestBuilder.addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                }
+                if (DEVICE_NETWORK_NOT_METERED in restrictions) {
+                    networkRequestBuilder.addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+                }
+                val constraints = Constraints.Builder()
+                    // 'networkRequest' only applies to Android 9+, otherwise 'networkType' is used
+                    .setRequiredNetworkRequest(networkRequestBuilder.build(), networkType)
+                    .setRequiresCharging(DEVICE_CHARGING in restrictions)
+                    .setRequiresBatteryNotLow(true)
+                    .build()
 
                 val request = PeriodicWorkRequestBuilder<AnimeLibraryUpdateJob>(
                     interval.toLong(),

@@ -4,15 +4,15 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.util.fastAny
+import androidx.compose.ui.util.fastDistinctBy
+import androidx.compose.ui.util.fastFilter
 import androidx.compose.ui.util.fastMap
+import androidx.compose.ui.util.fastMapNotNull
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.core.preference.PreferenceMutableState
 import eu.kanade.core.preference.asState
-import eu.kanade.core.util.fastDistinctBy
-import eu.kanade.core.util.fastFilter
 import eu.kanade.core.util.fastFilterNot
-import eu.kanade.core.util.fastMapNotNull
 import eu.kanade.core.util.fastPartition
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.entries.anime.interactor.UpdateAnime
@@ -22,11 +22,13 @@ import eu.kanade.presentation.entries.DownloadAction
 import eu.kanade.presentation.library.components.LibraryToolbarTitle
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
+import eu.kanade.tachiyomi.data.cache.AnimeBackgroundCache
 import eu.kanade.tachiyomi.data.cache.AnimeCoverCache
 import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadCache
 import eu.kanade.tachiyomi.data.download.anime.AnimeDownloadManager
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.util.episode.getNextUnseen
+import eu.kanade.tachiyomi.util.removeBackgrounds
 import eu.kanade.tachiyomi.util.removeCovers
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.PersistentList
@@ -91,6 +93,7 @@ class AnimeLibraryScreenModel(
     private val preferences: BasePreferences = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
     private val coverCache: AnimeCoverCache = Injekt.get(),
+    private val backgroundCache: AnimeBackgroundCache = Injekt.get(),
     private val sourceManager: AnimeSourceManager = Injekt.get(),
     private val downloadManager: AnimeDownloadManager = Injekt.get(),
     private val downloadCache: AnimeDownloadCache = Injekt.get(),
@@ -290,7 +293,7 @@ class AnimeLibraryScreenModel(
                     else -> i1.libraryAnime.unseenCount.compareTo(i2.libraryAnime.unseenCount)
                 }
                 AnimeLibrarySort.Type.TotalEpisodes -> {
-                    i1.libraryAnime.totalEpisodes.compareTo(i2.libraryAnime.totalEpisodes)
+                    i1.libraryAnime.totalCount.compareTo(i2.libraryAnime.totalCount)
                 }
                 AnimeLibrarySort.Type.LatestEpisode -> {
                     i1.libraryAnime.latestUpload.compareTo(i2.libraryAnime.latestUpload)
@@ -307,13 +310,14 @@ class AnimeLibraryScreenModel(
                     item1Score.compareTo(item2Score)
                 }
                 AnimeLibrarySort.Type.AiringTime -> when {
+                    i1.libraryAnime.unseenCount != i2.libraryAnime.unseenCount ->
+                        i1.libraryAnime.unseenCount.compareTo(i2.libraryAnime.unseenCount)
+                    i1.libraryAnime.anime.nextEpisodeAiringAt == i2.libraryAnime.anime.nextEpisodeAiringAt -> 0
                     i1.libraryAnime.anime.nextEpisodeAiringAt == 0L -> if (this.isAscending) 1 else -1
                     i2.libraryAnime.anime.nextEpisodeAiringAt == 0L -> if (this.isAscending) -1 else 1
-                    i1.libraryAnime.unseenCount == i2.libraryAnime.unseenCount ->
-                        i1.libraryAnime.anime.nextEpisodeAiringAt.compareTo(
-                            i2.libraryAnime.anime.nextEpisodeAiringAt,
-                        )
-                    else -> i1.libraryAnime.unseenCount.compareTo(i2.libraryAnime.unseenCount)
+                    else -> i1.libraryAnime.anime.nextEpisodeAiringAt.compareTo(
+                        i2.libraryAnime.anime.nextEpisodeAiringAt,
+                    )
                 }
                 AnimeLibrarySort.Type.Random -> {
                     error("Why Are We Still Here? Just To Suffer?")
@@ -337,6 +341,7 @@ class AnimeLibraryScreenModel(
     private fun getAnimelibItemPreferencesFlow(): Flow<ItemPreferences> {
         return combine(
             libraryPreferences.downloadBadge().changes(),
+            libraryPreferences.unreadBadge().changes(),
             libraryPreferences.localBadge().changes(),
             libraryPreferences.languageBadge().changes(),
             libraryPreferences.autoUpdateItemRestrictions().changes(),
@@ -351,16 +356,17 @@ class AnimeLibraryScreenModel(
             transform = {
                 ItemPreferences(
                     downloadBadge = it[0] as Boolean,
-                    localBadge = it[1] as Boolean,
-                    languageBadge = it[2] as Boolean,
-                    skipOutsideReleasePeriod = LibraryPreferences.ENTRY_OUTSIDE_RELEASE_PERIOD in (it[3] as Set<*>),
-                    globalFilterDownloaded = it[4] as Boolean,
-                    filterDownloaded = it[5] as TriState,
-                    filterUnseen = it[6] as TriState,
-                    filterStarted = it[7] as TriState,
-                    filterBookmarked = it[8] as TriState,
-                    filterCompleted = it[9] as TriState,
-                    filterIntervalCustom = it[10] as TriState,
+                    unseenBadge = it[1] as Boolean,
+                    localBadge = it[2] as Boolean,
+                    languageBadge = it[3] as Boolean,
+                    skipOutsideReleasePeriod = LibraryPreferences.ENTRY_OUTSIDE_RELEASE_PERIOD in (it[4] as Set<*>),
+                    globalFilterDownloaded = it[5] as Boolean,
+                    filterDownloaded = it[6] as TriState,
+                    filterUnseen = it[7] as TriState,
+                    filterStarted = it[8] as TriState,
+                    filterBookmarked = it[9] as TriState,
+                    filterCompleted = it[10] as TriState,
+                    filterIntervalCustom = it[11] as TriState,
                 )
             },
         )
@@ -385,7 +391,7 @@ class AnimeLibraryScreenModel(
                         } else {
                             0
                         },
-                        unseenCount = animelibAnime.unseenCount,
+                        unseenCount = if (prefs.unseenBadge) animelibAnime.unseenCount else 0,
                         isLocal = if (prefs.localBadge) animelibAnime.anime.isLocal() else false,
                         sourceLanguage = if (prefs.languageBadge) {
                             sourceManager.getOrStub(animelibAnime.anime.source).lang
@@ -525,6 +531,7 @@ class AnimeLibraryScreenModel(
             if (deleteFromLibrary) {
                 val toDelete = animeToDelete.map {
                     it.removeCovers(coverCache)
+                    it.removeBackgrounds(backgroundCache)
                     AnimeUpdate(
                         favorite = false,
                         id = it.id,
@@ -730,6 +737,7 @@ class AnimeLibraryScreenModel(
     @Immutable
     private data class ItemPreferences(
         val downloadBadge: Boolean,
+        val unseenBadge: Boolean,
         val localBadge: Boolean,
         val languageBadge: Boolean,
         val skipOutsideReleasePeriod: Boolean,

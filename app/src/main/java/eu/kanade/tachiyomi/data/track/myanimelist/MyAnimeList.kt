@@ -15,9 +15,9 @@ import eu.kanade.tachiyomi.data.track.model.MangaTrackSearch
 import eu.kanade.tachiyomi.data.track.myanimelist.dto.MALOAuth
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.aniyomi.AYMR
 import uy.kohesive.injekt.injectLazy
 import tachiyomi.domain.track.anime.model.AnimeTrack as DomainAnimeTrack
 import tachiyomi.domain.track.manga.model.MangaTrack as DomainMangaTrack
@@ -81,12 +81,12 @@ class MyAnimeList(id: Long) :
     }
 
     override fun getStatusForAnime(status: Long): StringResource? = when (status) {
-        WATCHING -> MR.strings.watching
+        WATCHING -> AYMR.strings.watching
         COMPLETED -> MR.strings.completed
         ON_HOLD -> MR.strings.on_hold
         DROPPED -> MR.strings.dropped
-        PLAN_TO_WATCH -> MR.strings.plan_to_watch
-        REWATCHING -> MR.strings.repeating_anime
+        PLAN_TO_WATCH -> AYMR.strings.plan_to_watch
+        REWATCHING -> AYMR.strings.repeating_anime
         else -> null
     }
 
@@ -119,8 +119,6 @@ class MyAnimeList(id: Long) :
     }
 
     private suspend fun add(track: AnimeTrack): AnimeTrack {
-        track.status = WATCHING
-        track.score = 0.0
         return api.updateItem(track)
     }
 

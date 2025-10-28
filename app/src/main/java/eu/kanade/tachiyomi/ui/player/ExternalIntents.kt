@@ -247,9 +247,9 @@ class ExternalIntents {
             val requestedUrl = video.subtitleTracks.getOrNull(requestedLanguage)?.url
 
             // Just, Next, MX Player, mpv
-            putExtra("subs", video.subtitleTracks.map { Uri.parse(it.url) }.toTypedArray())
+            putExtra("subs", video.subtitleTracks.map { it.url.toUri() }.toTypedArray())
             putExtra("subs.name", video.subtitleTracks.map { it.lang }.toTypedArray())
-            putExtra("subs.enable", requestedUrl?.let { arrayOf(Uri.parse(it)) } ?: emptyArray())
+            putExtra("subs.enable", requestedUrl?.let { arrayOf(it.toUri()) } ?: emptyArray())
 
             // VLC - seems to only work for local sub files
             requestedUrl?.let { putExtra("subtitles_location", it) }
@@ -456,6 +456,7 @@ class ExternalIntents {
                     id = currEp.id,
                     seen = seen,
                     bookmark = currEp.bookmark,
+                    fillermark = currEp.fillermark,
                     lastSecondSeen = lastSecondSeen,
                     totalSeconds = totalSeconds,
                 ),

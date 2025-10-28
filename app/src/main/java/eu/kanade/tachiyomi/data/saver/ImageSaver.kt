@@ -26,6 +26,8 @@ import java.io.File
 import java.io.InputStream
 import java.time.Instant
 
+typealias ImageBackground = Image.Cover
+
 class ImageSaver(
     val context: Context,
 ) {
@@ -180,6 +182,7 @@ sealed class Image(
 }
 
 sealed interface Location {
+    @ConsistentCopyVisibility
     data class Pictures(val relativePath: String) : Location {
         companion object {
             fun create(relativePath: String = ""): Pictures {

@@ -69,6 +69,7 @@ import eu.kanade.tachiyomi.ui.download.manga.mangaDownloadTab
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.launch
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.aniyomi.AYMR
 import tachiyomi.presentation.core.components.Pill
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.TabText
@@ -166,7 +167,7 @@ data object DownloadsTab : Tab {
             floatingActionButton = {
                 AnimatedVisibility(
                     visible = when (state.currentPage) {
-                        0 -> false
+                        0 -> animeDownloadList.isNotEmpty()
                         1 -> mangaDownloadList.isNotEmpty()
                         else -> false
                     },
@@ -179,9 +180,9 @@ data object DownloadsTab : Tab {
                         text = {
                             val id = when (state.currentPage) {
                                 0 -> if (animeIsRunning) {
-                                    MR.strings.action_pause
+                                    AYMR.strings.action_stop
                                 } else {
-                                    MR.strings.action_resume
+                                    AYMR.strings.action_continue
                                 }
                                 1 -> if (mangaIsRunning) {
                                     MR.strings.action_pause
@@ -245,7 +246,7 @@ data object DownloadsTab : Tab {
                             onClick = { scope.launch { state.animateScrollToPage(0) } },
                             text = {
                                 TabText(
-                                    text = stringResource(MR.strings.label_anime),
+                                    text = stringResource(AYMR.strings.label_anime),
                                     badgeCount = animeDownloadCount,
                                 )
                             },
@@ -256,7 +257,7 @@ data object DownloadsTab : Tab {
                             onClick = { scope.launch { state.animateScrollToPage(1) } },
                             text = {
                                 TabText(
-                                    text = stringResource(MR.strings.manga),
+                                    text = stringResource(AYMR.strings.manga),
                                     badgeCount = mangaDownloadCount,
                                 )
                             },
@@ -330,7 +331,7 @@ data object DownloadsTab : Tab {
                 NestedMenuItem(
                     text = {
                         Text(
-                            text = stringResource(MR.strings.action_order_by_episode_number),
+                            text = stringResource(AYMR.strings.action_order_by_episode_number),
                         )
                     },
                     children = { closeMenu ->

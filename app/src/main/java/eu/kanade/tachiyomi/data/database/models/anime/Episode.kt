@@ -29,6 +29,9 @@ interface Episode : SEpisode, Serializable {
     var version: Long
 }
 
+val Episode.isRecognizedNumber: Boolean
+    get() = episode_number >= 0f
+
 fun Episode.toDomainEpisode(): DomainEpisode? {
     if (id == null || anime_id == null) return null
     return DomainEpisode(
@@ -36,6 +39,7 @@ fun Episode.toDomainEpisode(): DomainEpisode? {
         animeId = anime_id!!,
         seen = seen,
         bookmark = bookmark,
+        fillermark = fillermark,
         lastSecondSeen = last_second_seen,
         totalSeconds = total_seconds,
         dateFetch = date_fetch,
@@ -45,6 +49,8 @@ fun Episode.toDomainEpisode(): DomainEpisode? {
         dateUpload = date_upload,
         episodeNumber = episode_number.toDouble(),
         scanlator = scanlator,
+        summary = summary,
+        previewUrl = preview_url,
         lastModifiedAt = last_modified,
         version = version,
     )

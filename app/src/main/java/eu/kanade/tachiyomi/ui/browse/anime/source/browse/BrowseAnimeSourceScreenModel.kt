@@ -14,15 +14,17 @@ import androidx.paging.map
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.core.preference.asState
-import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.entries.anime.interactor.UpdateAnime
 import eu.kanade.domain.entries.anime.model.toDomainAnime
+import eu.kanade.domain.source.anime.interactor.GetAnimeIncognitoState
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.track.anime.interactor.AddAnimeTracks
 import eu.kanade.presentation.util.ioCoroutineScope
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
+import eu.kanade.tachiyomi.data.cache.AnimeBackgroundCache
 import eu.kanade.tachiyomi.data.cache.AnimeCoverCache
+import eu.kanade.tachiyomi.util.removeBackgrounds
 import eu.kanade.tachiyomi.util.removeCovers
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
@@ -60,9 +62,9 @@ class BrowseAnimeSourceScreenModel(
     listingQuery: String?,
     sourceManager: AnimeSourceManager = Injekt.get(),
     sourcePreferences: SourcePreferences = Injekt.get(),
-    basePreferences: BasePreferences = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
     private val coverCache: AnimeCoverCache = Injekt.get(),
+    private val backgroundCache: AnimeBackgroundCache = Injekt.get(),
     private val getRemoteAnime: GetRemoteAnime = Injekt.get(),
     private val getDuplicateAnimelibAnime: GetDuplicateLibraryAnime = Injekt.get(),
     private val getCategories: GetAnimeCategories = Injekt.get(),
@@ -72,6 +74,7 @@ class BrowseAnimeSourceScreenModel(
     private val networkToLocalAnime: NetworkToLocalAnime = Injekt.get(),
     private val updateAnime: UpdateAnime = Injekt.get(),
     private val addTracks: AddAnimeTracks = Injekt.get(),
+    private val getIncognitoState: GetAnimeIncognitoState = Injekt.get(),
 ) : StateScreenModel<BrowseAnimeSourceScreenModel.State>(State(Listing.valueOf(listingQuery))) {
 
     var displayMode by sourcePreferences.sourceDisplayMode().asState(screenModelScope)
@@ -97,7 +100,7 @@ class BrowseAnimeSourceScreenModel(
             }
         }
 
-        if (!basePreferences.incognitoMode().get()) {
+        if (!getIncognitoState.await(source.id)) {
             sourcePreferences.lastUsedAnimeSource().set(source.id)
         }
     }
@@ -242,6 +245,7 @@ class BrowseAnimeSourceScreenModel(
 
             if (!new.favorite) {
                 new = new.removeCovers(coverCache)
+                new = new.removeBackgrounds(backgroundCache)
             } else {
                 setAnimeDefaultEpisodeFlags.await(anime)
                 addTracks.bindEnhancedTrackers(anime, source)

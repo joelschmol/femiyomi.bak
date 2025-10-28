@@ -341,9 +341,10 @@ fun EntryListItem(
     onClickContinueViewing: (() -> Unit)? = null,
     entries: Int = 0,
     containerHeight: Int = 0,
+    modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .selectedBackground(isSelected)
             .height(
                 when (entries) {

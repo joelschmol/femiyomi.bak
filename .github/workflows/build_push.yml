@@ -24,27 +24,33 @@ jobs:
       - name: Clone repo
         uses: actions/checkout@v4.2.2
 
-      - name: Validate Gradle Wrapper
-        uses: gradle/actions/wrapper-validation@v4.1.0
-
       - name: Set up JDK
-        uses: actions/setup-java@v4.5.0
+        uses: actions/setup-java@3a4f6e1af504cf6a31855fa899c6aa5355ba6c12 # v4.7.0
         with:
           java-version: 17
-          distribution: adopt
+          distribution: temurin
 
       - name: Set up gradle
-        uses: gradle/actions/setup-gradle@v4.1.0
+        uses: gradle/actions/setup-gradle@94baf225fe0a508e581a564467443d0e2379123b # v4.3.0
+
+      - name: Check code format
+        run: ./gradlew spotlessCheck
+
+      - name: Build app
+        run: ./gradlew assembleRelease -Penable-updater
+
+      - name: Run unit tests
+        run: ./gradlew testReleaseUnitTest
 
       - name: Build app
         run: 
           ./gradlew spotlessApply spotlessCheck assembleStandardRelease assembleStandardPreview
           
       - name: Upload APK
-        uses: actions/upload-artifact@v4.4.3
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: arm64-v8a-${{ github.sha }}
-          path: app/build/outputs/apk/standard/release/app-standard-arm64-v8a-release-unsigned.apk
+          path: app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk
 
       - name: Upload Preview APK
         uses: actions/upload-artifact@v4.4.3
@@ -53,48 +59,56 @@ jobs:
           path: app/build/outputs/apk/standard/preview/app-standard-arm64-v8a-preview.apk
 
       - name: Upload mapping
-        uses: actions/upload-artifact@v4.4.3
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mapping-${{ github.sha }}
-          path: app/build/outputs/mapping/standardRelease
+          path: app/build/outputs/mapping/release
 
       - name: Get tag name
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           echo "VERSION_TAG=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
 
+      - name: Sign APK
+        if: startsWith(github.ref, 'refs/tags/') && github.repository == 'aniyomiorg/aniyomi'
+        uses: r0adkll/sign-android-release@f30bdd30588842ac76044ecdbd4b6d0e3e813478
+        with:
+          releaseDirectory: app/build/outputs/apk/release
+          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
+          alias: ${{ secrets.ALIAS }}
+          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.KEY_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: '35.0.1'
+
       - name: Clean up build artifacts
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           set -e
 
-          mv app/build/outputs/apk/standard/release/app-standard-universal-release-unsigned.apk aniyomi-${{ env.VERSION_TAG }}.apk
+          mv app/build/outputs/apk/release/app-universal-release-unsigned-signed.apk aniyomi-${{ env.VERSION_TAG }}.apk
           sha=`sha256sum aniyomi-${{ env.VERSION_TAG }}.apk | awk '{ print $1 }'`
           echo "APK_UNIVERSAL_SHA=$sha" >> $GITHUB_ENV
 
-          cp app/build/outputs/apk/standard/release/app-standard-arm64-v8a-release-unsigned.apk aniyomi-arm64-v8a-${{ env.VERSION_TAG }}.apk
+          mv app/build/outputs/apk/release/app-arm64-v8a-release-unsigned-signed.apk aniyomi-arm64-v8a-${{ env.VERSION_TAG }}.apk
           sha=`sha256sum aniyomi-arm64-v8a-${{ env.VERSION_TAG }}.apk | awk '{ print $1 }'`
           echo "APK_ARM64_V8A_SHA=$sha" >> $GITHUB_ENV
 
-          cp app/build/outputs/apk/standard/preview/app-standard-arm64-v8a-preview-unsigned.apk aniyomi-arm64-v8a-preview-${{ env.VERSION_TAG }}.apk
-          sha=`sha256sum aniyomi-arm64-v8a-preview-${{ env.VERSION_TAG }}.apk | awk '{ print $1 }'`
-          echo "APK_ARM64_V8A_PREVIEW_SHA=$sha" >> $GITHUB_ENV
-
-          cp app/build/outputs/apk/standard/release/app-standard-armeabi-v7a-release-unsigned.apk aniyomi-armeabi-v7a-${{ env.VERSION_TAG }}.apk
+          mv app/build/outputs/apk/release/app-armeabi-v7a-release-unsigned-signed.apk aniyomi-armeabi-v7a-${{ env.VERSION_TAG }}.apk
           sha=`sha256sum aniyomi-armeabi-v7a-${{ env.VERSION_TAG }}.apk | awk '{ print $1 }'`
           echo "APK_ARMEABI_V7A_SHA=$sha" >> $GITHUB_ENV
 
-          cp app/build/outputs/apk/standard/release/app-standard-x86-release-unsigned.apk aniyomi-x86-${{ env.VERSION_TAG }}.apk
+          mv app/build/outputs/apk/release/app-x86-release-unsigned-signed.apk aniyomi-x86-${{ env.VERSION_TAG }}.apk
           sha=`sha256sum aniyomi-x86-${{ env.VERSION_TAG }}.apk | awk '{ print $1 }'`
           echo "APK_X86_SHA=$sha" >> $GITHUB_ENV
 
-          cp app/build/outputs/apk/standard/release/app-standard-x86_64-release-unsigned.apk aniyomi-x86_64-${{ env.VERSION_TAG }}.apk
+          mv app/build/outputs/apk/release/app-x86_64-release-unsigned-signed.apk aniyomi-x86_64-${{ env.VERSION_TAG }}.apk
           sha=`sha256sum aniyomi-x86_64-${{ env.VERSION_TAG }}.apk | awk '{ print $1 }'`
           echo "APK_X86_64_SHA=$sha" >> $GITHUB_ENV
 
       - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2.0.8
+        if: startsWith(github.ref, 'refs/tags/') && github.repository == 'aniyomiorg/aniyomi'
+        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2.2.1
         with:
           tag_name: ${{ env.VERSION_TAG }}
           name: Aniyomi ${{ env.VERSION_TAG }}

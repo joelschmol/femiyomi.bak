@@ -1,12 +1,12 @@
 package eu.kanade.tachiyomi.ui.stats.anime
 
+import androidx.compose.ui.util.fastDistinctBy
+import androidx.compose.ui.util.fastFilter
+import androidx.compose.ui.util.fastMapNotNull
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.core.util.fastCountNot
-import eu.kanade.core.util.fastDistinctBy
-import eu.kanade.core.util.fastFilter
 import eu.kanade.core.util.fastFilterNot
-import eu.kanade.core.util.fastMapNotNull
 import eu.kanade.presentation.more.stats.StatsScreenState
 import eu.kanade.presentation.more.stats.data.StatsData
 import eu.kanade.tachiyomi.animesource.model.SAnime
@@ -65,7 +65,7 @@ class AnimeStatsScreenModel(
             )
 
             val chaptersStatData = StatsData.Episodes(
-                totalEpisodeCount = distinctLibraryAnime.sumOf { it.totalEpisodes }.toInt(),
+                totalEpisodeCount = distinctLibraryAnime.sumOf { it.totalCount }.toInt(),
                 readEpisodeCount = distinctLibraryAnime.sumOf { it.seenCount }.toInt(),
                 downloadCount = downloadManager.getDownloadCount(),
             )
@@ -111,7 +111,7 @@ class AnimeStatsScreenModel(
             .fastCountNot {
                 (ENTRY_NON_COMPLETED in updateRestrictions && it.anime.status.toInt() == SAnime.COMPLETED) ||
                     (ENTRY_HAS_UNVIEWED in updateRestrictions && it.unseenCount != 0L) ||
-                    (ENTRY_NON_VIEWED in updateRestrictions && it.totalEpisodes > 0 && !it.hasStarted)
+                    (ENTRY_NON_VIEWED in updateRestrictions && it.totalCount > 0 && !it.hasStarted)
             }
     }
 
